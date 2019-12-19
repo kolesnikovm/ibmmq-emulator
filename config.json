@@ -1,0 +1,7 @@
+{
+    "mode": "http",
+    "pem": "./ssl/server.pem",
+    "key": "./ssl/server.key",
+	"port": "9090",
+    "handler": "/"
+}
