@@ -3,6 +3,7 @@ package mq
 import (
 	"encoding/binary"
 	"encoding/hex"
+	"log"
 	"regexp"
 )
 
@@ -57,27 +58,31 @@ type mqput struct {
 }
 
 func handleMqPut(msg, userID, appType, appName, qMgr []byte) (response []byte) {
+	queue := getQueueName(msg)
+
+	log.Printf("[INFO] received MQPUT message - C.: %x, R.: %x, Q.: %s\n", msg[8:12], msg[12:16], queue)
+
 	msgID, _ := hex.DecodeString("414d5120514d312020202020202020206445ea5d04b59424") //сделать вручную
 	messageDescriptor := messageDescriptor{
-		StructID:   msg[0:4],
-		Version:    msg[4:8],
-		Report:     msg[8:12],
-		MsgType:    msg[12:16],
-		Expiry:     msg[16:20],
-		Feedback:   msg[20:24],
-		Encoding:   msg[24:28],
-		CCSID:      msg[28:32],
-		Format:     msg[32:40],
-		Priority:   msg[40:44],
-		Persist:    msg[44:48],
+		StructID:   msg[52:56],
+		Version:    msg[56:60],
+		Report:     msg[60:64],
+		MsgType:    msg[64:68],
+		Expiry:     msg[68:72],
+		Feedback:   msg[72:76],
+		Encoding:   msg[76:80],
+		CCSID:      msg[80:84],
+		Format:     msg[84:92],
+		Priority:   msg[92:96],
+		Persist:    msg[96:100],
 		MsgID:      msgID,
-		CorrelID:   msg[72:96],
-		BackoCnt:   msg[96:100],
-		ReplyToQ:   msg[100:148],
-		ReplToQMgr: msg[148:196],
+		CorrelID:   msg[124:148],
+		BackoCnt:   msg[148:152],
+		ReplyToQ:   msg[152:200],
+		ReplToQMgr: msg[200:248],
 		UserID:     userID,
-		AccntTok:   msg[208:240],
-		AppIDDAta:  msg[240:272],
+		AccntTok:   msg[260:292],
+		AppIDDAta:  msg[292:324],
 		PutAppTyp:  appType,
 		PutAppName: appName,
 		PutDatGMT:  []byte{0x32, 0x30, 0x31, 0x39, 0x31, 0x32, 0x30, 0x36}, //сделать норм
@@ -86,12 +91,6 @@ func handleMqPut(msg, userID, appType, appName, qMgr []byte) (response []byte) {
 	}
 	response = append(response, getBytes(messageDescriptor)...)
 
-	valueLen1 := int(binary.BigEndian.Uint32(msg[516:520]))
-	valueLen2 := int(binary.BigEndian.Uint32(msg[520+valueLen1 : 520+valueLen1+4]))
-	queueStr := string(msg[520+valueLen1+4 : 520+valueLen1+4+valueLen2])
-	qRegEx := regexp.MustCompile(`///(.+?)<`)
-	queue := qRegEx.FindStringSubmatch(queueStr)[1]
-
 	resQName := make([]byte, 0, 48)
 	resQName = append(resQName, []byte(queue)...)
 	for i := len(resQName); i < cap(resQName); i++ {
@@ -99,29 +98,38 @@ func handleMqPut(msg, userID, appType, appName, qMgr []byte) (response []byte) {
 	}
 
 	putMessageOptions := putMessageOptions{
-		StructID:   msg[324:328],
-		Version:    msg[328:332],
-		Options:    msg[332:336],
-		Timeout:    msg[336:340],
-		Context:    msg[340:344],
+		StructID:   msg[376:380],
+		Version:    msg[380:384],
+		Options:    msg[384:388],
+		Timeout:    msg[388:392],
+		Context:    msg[392:396],
 		KnDstCnt:   []byte{0x01, 0x00, 0x00, 0x00},
 		UkDstCnt:   []byte{0x00, 0x00, 0x00, 0x00},
 		InDstCnt:   []byte{0x00, 0x00, 0x00, 0x00},
 		ResQName:   resQName,
 		ResQMgr:    qMgr,
-		NumRecs:    msg[452:456],
-		PMRFlag:    msg[456:460],
-		OffsetPMR:  msg[460:464],
-		OffsetRR:   msg[464:468],
-		AddressPMR: msg[468:472],
-		AddressRR:  msg[472:476],
+		NumRecs:    msg[504:508],
+		PMRFlag:    msg[508:512],
+		OffsetPMR:  msg[512:516],
+		OffsetRR:   msg[516:520],
+		AddressPMR: msg[520:524],
+		AddressRR:  msg[524:528],
 	}
 	response = append(response, getBytes(putMessageOptions)...)
 
 	mqput := mqput{
-		DataLength: msg[476:480],
+		DataLength: msg[528:532],
 	}
 	response = append(response, getBytes(mqput)...)
 
 	return response
+}
+
+func getQueueName(msg []byte) string {
+	valueLen1 := int(binary.BigEndian.Uint32(msg[568:572]))
+	valueLen2 := int(binary.BigEndian.Uint32(msg[572+valueLen1 : 572+valueLen1+4]))
+	queueStr := string(msg[572+valueLen1+4 : 572+valueLen1+4+valueLen2])
+	qRegEx := regexp.MustCompile(`///(.+?)<`)
+
+	return qRegEx.FindStringSubmatch(queueStr)[1]
 }

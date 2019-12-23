@@ -3,6 +3,7 @@ package mq
 import (
 	"encoding/binary"
 	"encoding/hex"
+	"log"
 	"math/rand"
 )
 
@@ -75,6 +76,8 @@ type data struct {
 }
 
 func handleRequestMsg(msg, userID, appType, appName, qMgr []byte) (response []byte) {
+	log.Printf("[INFO] received REQUEST_MESSAGE message\n")
+
 	msgToken, _ := hex.DecodeString("6345ea5d410000005f00000000000000")
 
 	queueName := []byte("DEV.QUEUE.1 ") //нужен ли в конце пробел

@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"encoding/binary"
 	"encoding/hex"
+	"log"
 )
 
 type mqInc struct {
@@ -23,7 +24,9 @@ type integerValue struct {
 	value []byte `length:"4"`
 }
 
-func handleMqInc(msg []byte) (byteValue []byte) {
+func handleMqInc(msg []byte) (response []byte) {
+	log.Printf("[INFO] received MQINC message\n")
+
 	selectorCount := int(binary.LittleEndian.Uint32(msg[:4]))
 	integerCount := int(binary.LittleEndian.Uint32(msg[4:8]))
 	characterCount := int(binary.LittleEndian.Uint32(msg[8:12])) / 48
@@ -56,18 +59,18 @@ func handleMqInc(msg []byte) (byteValue []byte) {
 		CharValues:      characterValues,
 	}
 
-	byteValue = append(byteValue, mqInc.SelectorCount...)
-	byteValue = append(byteValue, mqInc.IntegerCount...)
-	byteValue = append(byteValue, mqInc.CharacterLength...)
+	response = append(response, mqInc.SelectorCount...)
+	response = append(response, mqInc.IntegerCount...)
+	response = append(response, mqInc.CharacterLength...)
 	for _, selector := range mqInc.Selectors {
-		byteValue = append(byteValue, selector.value...)
+		response = append(response, selector.value...)
 	}
 	for _, intValue := range mqInc.IntegerValues {
-		byteValue = append(byteValue, intValue.value...)
+		response = append(response, intValue.value...)
 	}
-	byteValue = append(byteValue, mqInc.CharValues...)
+	response = append(response, mqInc.CharValues...)
 
-	return byteValue
+	return response
 }
 
 func getSelectorValue(key []byte) (value []byte) {
@@ -81,6 +84,11 @@ func getSelectorValue(key []byte) (value []byte) {
 	case bytes.Compare(key, []byte{0xdf, 0x07, 0x00, 0x00}) == 0:
 		value, _ = hex.DecodeString("514d31202020202020202020202020202020202020202020202020202020202020202020202020202020202020202020")
 		// queue manager name
+		// value := make([]byte, 0, 48)
+		// value = append(value, []byte(qMgr)...)
+		// for i := len(value); i < cap(value); i++ {
+		// 	value = append(value, []byte(" ")...)
+		// }
 	case bytes.Compare(key, []byte{0xf0, 0x07, 0x00, 0x00}) == 0:
 		value, _ = hex.DecodeString("514d315f323031392d31322d30355f31312e31372e303120202020202020202020202020202020202020202020202020")
 		// queue manager identifier

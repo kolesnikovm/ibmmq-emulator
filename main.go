@@ -49,6 +49,9 @@ func handleConn(conn net.Conn) {
 		conn.Close()
 	}()
 
+	//create context
+	// ctx := make(map[string][]byte)
+
 	for {
 		conn.SetReadDeadline(time.Now().Add(5 * time.Second))
 
@@ -59,7 +62,6 @@ func handleConn(conn net.Conn) {
 		}
 
 		length := int(binary.BigEndian.Uint32(messageStart[4:]))
-		fmt.Printf("Message Lentgh: %d\n", length)
 
 		messageEnd := make([]byte, length-len(messageStart))
 		_, err = io.ReadFull(conn, messageEnd)
@@ -68,10 +70,8 @@ func handleConn(conn net.Conn) {
 		}
 
 		message := append(messageStart, messageEnd...)
-		fmt.Printf("Message Received: %x\n", message)
 
 		response := mq.HandleMessage(message)
-		fmt.Printf("Response: %x\n", response)
 		conn.Write(response)
 
 		if len(response) > 17 && response[17] == mq.ASYNC_MESSAGE {
@@ -117,6 +117,6 @@ func main() {
 
 	for {
 		conn, _ := ln.Accept()
-		handleConn(conn)
+		go handleConn(conn)
 	}
 }

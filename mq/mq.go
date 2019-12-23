@@ -4,7 +4,7 @@ import (
 	"bytes"
 	"encoding/binary"
 	"encoding/hex"
-	"fmt"
+	"log"
 	"reflect"
 )
 
@@ -37,34 +37,6 @@ type apiHeader struct {
 	ObjectHdl  []byte `offset:"12", length:"4"`
 }
 
-type mqConn struct {
-	QMgr        []byte `offset:"0", length:"48"`
-	ApplName    []byte `offset:"48", length:"28"`
-	ApplType    []byte `offset:"76", length:"4"`
-	AccToken    []byte `offset:"80", length:"32"`
-	Options     []byte `offset:"112", length:"4"`
-	XOptions    []byte `offset:"116", length:"4"`
-	FConnOption []byte `offset:"120", length:"212"`
-}
-
-type objectDescriptor struct {
-	StructID       []byte `offset:"0" length:"4"`
-	Version        []byte `offset:"4" length:"4"`
-	ObjType        []byte `offset:"8" length:"4"`
-	ObjName        []byte `offset:"12" length:"48"`
-	ObjQMgr        []byte `offset:"60" length:"48"`
-	DynQName       []byte `offset:"108" length:"48"`
-	AltUserID      []byte `offset:"156" length:"12"`
-	NbrRecord      []byte `offset:"168" length:"4"`
-	KnownDestCount []byte `offset:"172" length:"4"`
-	UnknownDestCnt []byte `offset:"176" length:"4"`
-	InvalidDestCnt []byte `offset:"180" length:"4"`
-	OffsetOR       []byte `offset:"184" length:"4"`
-	OffsetRR       []byte `offset:"188" length:"4"`
-	AddressOR      []byte `offset:"192" length:"4"`
-	AddressRR      []byte `offset:"196" length:"4"`
-}
-
 const (
 	INITIAL_DATA           = byte(0x01)
 	USER_DATA              = byte(0x08)
@@ -80,6 +52,10 @@ const (
 	NOTIFICATION           = byte(0x0f)
 	MQCMIT, MQCMIT_REPLY   = byte(0x8a), byte(0x9a)
 	MQDISC, MQDISC_REPLY   = byte(0x82), byte(0x92)
+
+	TSH  = "TSH "
+	TSHM = "TSHM"
+	TSHC = "TSHC"
 )
 
 var (
@@ -96,24 +72,30 @@ var (
 	}
 
 	userID, appType, appName, qMgr []byte //перенести в контекст
+
+	MQCC_OK   = []byte{0x00, 0x00, 0x00, 0x00}
+	MQRC_NONE = []byte{0x00, 0x00, 0x00, 0x00}
 )
 
 func HandleMessage(msg []byte) (response []byte) {
+	log.Println("[INFO] ===== Start handling new message =====")
+
 	tshType := msg[:4]
-	fmt.Printf("tshType: %s\n", tshType)
+	log.Printf("[INFO] TSH type: %s\n", tshType)
 
 	var msgType byte
 	var tshmRs tshm
 
 	switch string(tshType) {
-	case "TSH ":
+	case TSH:
 		msgType = msg[9]
-	case "TSHM":
+	case TSHM:
 		tshmRs = tshm{
-			StructID:  msg[0:4],
+			StructID:  []byte(TSHM),
 			ConversID: msg[8:12],
 			RequestID: msg[12:16],
 			ByteOrder: msg[16:17],
+			MQSegmLen: make([]byte, 4),
 			SegmType:  []byte{msgTypes[msg[17]]},
 			CtlFlag1:  msg[18:19],
 			CtlFlag2:  msg[19:20],
@@ -123,159 +105,92 @@ func HandleMessage(msg []byte) (response []byte) {
 			Reserved:  msg[34:36],
 		}
 		msgType = msg[17]
-		fmt.Printf("SegmType: 0x%x\n", tshmRs.SegmType)
-	case "TSHC":
+	case TSHC:
 		msgType = msg[9]
 	default:
-		fmt.Printf("Unknown TSH type: %s\n", tshType)
+		log.Printf("[WARN] Unknown TSH type: %s\n", tshType)
+		return nil
 	}
 
 	switch msgType {
 	case INITIAL_DATA:
-		switch string(tshType) {
-		case "TSH ":
-			response, _ = hex.DecodeString("545348200000010c0201020000000000000000001101000033030000494420200d26009400000000ec7f000000004000000000004445562e41444d494e2e535652434f4e4e20202051003303514d312020202020202020202020202020202020202020202020202020202020202020202020202020202020202020202c0100000000000000ff00ffffffffffffffffffffffffffffff0000000000000a000000000800009a030000150000003c0000004d514d4d3039303130323030514d315f323031392d31322d30355f31312e31372e30312020202020202020202020202020202020202020202020202001000000ffffffffffffffffffffffffffffffff051b5465bff9cf4adaba0a4c")
-		case "TSHM":
-			response, _ = hex.DecodeString("5453484d0000011400000001000000000201000000000000000000002202000033030000494420200d26000000000000ec7f000000004000000000004445562e41444d494e2e535652434f4e4e20202051003303514d312020202020202020202020202020202020202020202020202020202020202020202020202020202020202020202c0100000000000000ff00ffffffffffffffffffffffffffffff0000000000000a000000000000009a030000150000003c0000004d514d4d3039303130323030514d315f323031392d31322d30355f31312e31372e30312020202020202020202020202020202020202020202020202001000000ffffffffffffffffffffffffffffffff051b5465bff9cf4adaba0a4c")
-		}
+		response = append(response, handleInitialData(msg, tshType)...)
 	case USER_DATA:
 		userID = msg[40:52]
 	case MQCONN:
 		tshmRs.MQSegmLen = []byte{0x00, 0x00, 0x01, 0x80}
-		apiHeader := apiHeader{
-			ReplyLen:   []byte{0x00, 0x00, 0x01, 0x78},
-			ComplCode:  []byte{0x00, 0x00, 0x00, 0x00},
-			ReasonCode: []byte{0x00, 0x00, 0x00, 0x00},
-			ObjectHdl:  []byte{0x00, 0x00, 0x00, 0x00},
-		}
+
 		appType = msg[128:132]
 		appName = msg[100:128]
 		qMgr = msg[52:100]
-		mqConn := mqConn{
-			QMgr:        msg[52:100],
-			ApplName:    msg[100:128],
-			ApplType:    msg[128:132],
-			AccToken:    msg[132:164],
-			Options:     msg[164:168],
-			XOptions:    msg[168:172],
-			FConnOption: decodeString("46434e4f0200000001000000414d5143514d312020202020202020206445ea5d02b494240000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000"),
+
+		apiHeader := apiHeader{
+			ReplyLen:   []byte{0x00, 0x00, 0x01, 0x78},
+			ComplCode:  MQCC_OK,
+			ReasonCode: MQRC_NONE,
+			ObjectHdl:  []byte{0x00, 0x00, 0x00, 0x00},
 		}
+
+		mqConn := handleMqConn(msg)
+
 		response = append(response, getBytes(tshmRs)...)
 		response = append(response, getBytes(apiHeader)...)
-		response = append(response, getBytes(mqConn)...)
+		response = append(response, mqConn...)
 	case MQOPEN:
 		tshmRs.MQSegmLen = []byte{0x00, 0x00, 0x01, 0x54}
+
 		apiHeader := apiHeader{
 			ReplyLen:   []byte{0x00, 0x00, 0x01, 0x4c},
-			ComplCode:  []byte{0x00, 0x00, 0x00, 0x00},
-			ReasonCode: []byte{0x00, 0x00, 0x00, 0x00},
+			ComplCode:  MQCC_OK,
+			ReasonCode: MQRC_NONE,
 			ObjectHdl:  []byte{0x02, 0x00, 0x00, 0x00},
 		}
-		objectDescriptor := objectDescriptor{
-			StructID:       msg[52:56],
-			Version:        msg[56:60],
-			ObjType:        msg[60:64],
-			ObjName:        msg[64:112],
-			ObjQMgr:        msg[112:160],
-			DynQName:       msg[160:208],
-			AltUserID:      msg[208:220],
-			NbrRecord:      msg[220:224],
-			KnownDestCount: []byte{0x01, 0x00, 0x00, 0x00},
-			UnknownDestCnt: msg[228:232],
-			InvalidDestCnt: msg[232:236],
-			OffsetOR:       msg[236:240],
-			OffsetRR:       msg[240:244],
-			AddressOR:      msg[244:248],
-			AddressRR:      msg[248:252],
-		}
-		mqOpen := mqOpen{
-			Options: []byte{0x20, 0x20, 0x00, 0x00},
-		}
-		hiddenField, _ := hex.DecodeString("2020202020202020202020202020202020202020202020202020202020202020202020202020202020202020202020205400000000000000")
-		fopa := fopa{
-			StructID:        msg[256:260],
-			Version:         msg[260:264],
-			Length:          msg[264:268],
-			DefPersistence:  msg[268:272],
-			DefPutRespType:  []byte{0xff, 0xff, 0xff, 0xff},
-			DefReadAhead:    []byte{0xff, 0xff, 0xff, 0xff},
-			PropertyControl: []byte{0xff, 0xff, 0xff, 0xff},
-			hiddenField:     hiddenField,
-		}
+
+		mqOpen := handleMqOpen(msg)
+
 		response = append(response, getBytes(tshmRs)...)
-		response = append(response, getBytes(apiHeader)...)
-		response = append(response, getBytes(objectDescriptor)...)
-		response = append(response, getBytes(mqOpen)...)
-		response = append(response, getBytes(fopa)...)
+		response = append(response, getBytes(apiHeader)...)	
+		response = append(response, mqOpen...)
 	case MQINQ:
 		mqInc := handleMqInc(msg[52:])
-		msgLength := 36 + 16 + len(mqInc)
-		msgLengthBytes := make([]byte, 4)
-		binary.BigEndian.PutUint32(msgLengthBytes, uint32(msgLength))
 
-		replyLen := msgLength - 8
-		replyLenBytes := make([]byte, 4)
-		binary.BigEndian.PutUint32(replyLenBytes, uint32(replyLen))
+		segmLen := 36 + 16 + len(mqInc)
+		segmLenBytes := getByteLength(segmLen)
+		replyLenBytes := getByteLength(segmLen-8)
 
-		tshmRs.MQSegmLen = msgLengthBytes
+		tshmRs.MQSegmLen = segmLenBytes
 		apiHeader := apiHeader{
 			ReplyLen:   replyLenBytes,
-			ComplCode:  []byte{0x00, 0x00, 0x00, 0x00},
-			ReasonCode: []byte{0x00, 0x00, 0x00, 0x00},
-			ObjectHdl:  []byte{0x02, 0x00, 0x00, 0x00},
+			ComplCode:  MQCC_OK,
+			ReasonCode: MQRC_NONE,
+			ObjectHdl:  msg[48:52],
 		}
 		response = append(response, getBytes(tshmRs)...)
 		response = append(response, getBytes(apiHeader)...)
 		response = append(response, mqInc...)
 	case MQCLOSE:
 		tshmRs.MQSegmLen = []byte{0x00, 0x00, 0x00, 0x34}
-		apiHeader := apiHeader{
-			ReplyLen:   []byte{0x00, 0x00, 0x00, 0x2c},
-			ComplCode:  []byte{0x00, 0x00, 0x00, 0x00},
-			ReasonCode: []byte{0x00, 0x00, 0x00, 0x00},
-			ObjectHdl:  []byte{0xff, 0xff, 0xff, 0xff},
-		}
+
+		mqClose := handleMqClose(msg)
+		
 		response = append(response, getBytes(tshmRs)...)
-		response = append(response, getBytes(apiHeader)...)
+		response = append(response, mqClose...)
 	case SOCKET_ACTION:
 		if bytes.Compare(msg[36:40], []byte{0x02, 0x00, 0x00, 0x00}) == 0 {
 			return nil
 		}
-		tshmRs := tshm{
-			StructID:  []byte{0x54, 0x53, 0x48, 0x4d},
-			MQSegmLen: []byte{0x00, 0x00, 0x00, 0x38},
-			ConversID: []byte{0x00, 0x00, 0x00, 0x03},
-			RequestID: msg[32:36],
-			ByteOrder: msg[8:9],
-			SegmType:  []byte{SOCKET_ACTION},
-			CtlFlag1:  []byte{0x00},
-			CtlFlag2:  []byte{0x00},
-			LUWIdent:  []byte{0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00},
-			Encoding:  []byte{0x22, 0x02, 0x00, 0x00},
-			CCSID:     []byte{0x33, 0x03},
-			Reserved:  []byte{0x00, 0x00},
-		}
-		socketAction := socketAction{
-			ConversID: msg[28:32],
-			RequestID: msg[32:36],
-			Type:      []byte{0x08, 0x00, 0x00, 0x00},
-			Param1:    []byte{0x15, 0x00, 0x00, 0x00},
-			Param2:    []byte{0x3d, 0x00, 0x00, 0x00},
-		}
-
-		response = append(response, getBytes(tshmRs)...)
-		response = append(response, getBytes(socketAction)...)
+		
+		socketAction := handleSocketAction(msg)
+		
+		response = append(response, socketAction...)
 	case SPI:
-		spi := handleSpi(msg[52:])
-		msgLength := 36 + 16 + len(spi)
-		msgLengthBytes := make([]byte, 4)
-		binary.BigEndian.PutUint32(msgLengthBytes, uint32(msgLength))
+		spi := handleSpi(msg)
 
-		replyLen := msgLength - 8
-		replyLenBytes := make([]byte, 4)
-		binary.BigEndian.PutUint32(replyLenBytes, uint32(replyLen))
+		segmLen := 36 + 16 + len(spi)
+		segmLenBytes := getByteLength(segmLen)
+		replyLenBytes := getByteLength(segmLen-8)
 
-		tshmRs.MQSegmLen = msgLengthBytes
+		tshmRs.MQSegmLen = segmLenBytes
 
 		objectHdl := []byte{0x00, 0x00, 0x00, 0x00}
 		if bytes.Compare(msg[52:56], []byte{0x0c, 0x00, 0x00, 0x00}) == 0 {
@@ -290,8 +205,8 @@ func HandleMessage(msg []byte) (response []byte) {
 
 		apiHeader := apiHeader{
 			ReplyLen:   replyLenBytes,
-			ComplCode:  []byte{0x00, 0x00, 0x00, 0x00},
-			ReasonCode: []byte{0x00, 0x00, 0x00, 0x00},
+			ComplCode:  MQCC_OK,
+			ReasonCode: MQRC_NONE,
 			ObjectHdl:  objectHdl, //на каждое открытие свой номер
 		}
 
@@ -299,21 +214,18 @@ func HandleMessage(msg []byte) (response []byte) {
 		response = append(response, getBytes(apiHeader)...)
 		response = append(response, spi...)
 	case MQPUT:
-		mqPut := handleMqPut(msg[52:], userID, appType, appName, qMgr)
-		msgLength := 36 + 16 + len(mqPut)
-		msgLengthBytes := make([]byte, 4)
-		binary.BigEndian.PutUint32(msgLengthBytes, uint32(msgLength))
+		mqPut := handleMqPut(msg, userID, appType, appName, qMgr)
 
-		replyLen := msgLength - 8
-		replyLenBytes := make([]byte, 4)
-		binary.BigEndian.PutUint32(replyLenBytes, uint32(replyLen))
+		segmLen := 36 + 16 + len(mqPut)
+		segmLenBytes := getByteLength(segmLen)
+		replyLenBytes := getByteLength(segmLen-8)
 
-		tshmRs.MQSegmLen = msgLengthBytes
+		tshmRs.MQSegmLen = segmLenBytes
 
 		apiHeader := apiHeader{
 			ReplyLen:   replyLenBytes,
-			ComplCode:  []byte{0x00, 0x00, 0x00, 0x00},
-			ReasonCode: []byte{0x00, 0x00, 0x00, 0x00},
+			ComplCode:  MQCC_OK,
+			ReasonCode: MQRC_NONE,
 			ObjectHdl:  msg[48:52],
 		}
 
@@ -323,11 +235,10 @@ func HandleMessage(msg []byte) (response []byte) {
 	case REQUEST_MSGS:
 		asyncMsg := handleRequestMsg(msg[36:], userID, appType, appName, qMgr)
 
-		msgLength := 36 + len(asyncMsg)
-		msgLengthBytes := make([]byte, 4)
-		binary.BigEndian.PutUint32(msgLengthBytes, uint32(msgLength))
+		segmLen := 36 + len(asyncMsg)
+		segmLenBytes := getByteLength(segmLen)
 
-		tshmRs.MQSegmLen = msgLengthBytes
+		tshmRs.MQSegmLen = segmLenBytes
 		tshmRs.RequestID = []byte{0x00, 0x00, 0x00, 0x01}
 		tshmRs.SegmType = []byte{ASYNC_MESSAGE}
 		tshmRs.CtlFlag1 = []byte{0x30}
@@ -339,8 +250,8 @@ func HandleMessage(msg []byte) (response []byte) {
 		tshmRs.MQSegmLen = []byte{0x00, 0x00, 0x00, 0x34}
 		apiHeader := apiHeader{
 			ReplyLen:   []byte{0x00, 0x00, 0x00, 0x2c},
-			ComplCode:  []byte{0x00, 0x00, 0x00, 0x00},
-			ReasonCode: []byte{0x00, 0x00, 0x00, 0x00},
+			ComplCode:  MQCC_OK,
+			ReasonCode: MQRC_NONE,
 			ObjectHdl:  []byte{0x00, 0x00, 0x00, 0x00},
 		}
 
@@ -350,8 +261,8 @@ func HandleMessage(msg []byte) (response []byte) {
 		tshmRs.MQSegmLen = []byte{0x00, 0x00, 0x00, 0x34}
 		apiHeader := apiHeader{
 			ReplyLen:   []byte{0x00, 0x00, 0x00, 0x2c},
-			ComplCode:  []byte{0x00, 0x00, 0x00, 0x00},
-			ReasonCode: []byte{0x00, 0x00, 0x00, 0x00},
+			ComplCode:  MQCC_OK,
+			ReasonCode: MQRC_NONE,
 			ObjectHdl:  []byte{0x00, 0x00, 0x00, 0x00},
 		}
 
@@ -379,4 +290,11 @@ func getBytes(msgPart interface{}) (bytes []byte) {
 	}
 
 	return bytes
+}
+
+func getByteLength(length int) []byte {
+	byteLen := make([]byte, 4)
+	binary.BigEndian.PutUint32(byteLen, uint32(length))
+
+	return byteLen
 }
