@@ -76,7 +76,7 @@ type data struct {
 }
 
 func handleRequestMsg(msg, userID, appType, appName, qMgr []byte) (response []byte) {
-	log.Printf("[INFO] received REQUEST_MESSAGE message\n")
+	log.Printf("[INFO] M: REQUEST_MESSAGE, C: %d, R: %d\n", binary.BigEndian.Uint32(msg[8:12]), binary.BigEndian.Uint32(msg[12:16]))
 
 	msgToken, _ := hex.DecodeString("6345ea5d410000005f00000000000000")
 
@@ -84,16 +84,16 @@ func handleRequestMsg(msg, userID, appType, appName, qMgr []byte) (response []by
 	queueNameLen := byte(len(queueName))
 
 	asyncMessage := asyncMessage{
-		Version:   msg[0:4],
-		Handle:    msg[4:8],
+		Version:   msg[36:40],
+		Handle:    msg[40:44],
 		MsgIndex:  []byte{0x01, 0x00, 0x00, 0x00},
 		GlbMsgIdx: []byte{0x01, 0x00, 0x00, 0x00},
-		SegLength: []byte{0x00, 0x00, 0x00, 0x00}, //
+		SegLength: make([]byte, 4),
 		SegIndex:  []byte{0x00, 0x00},
-		SelIndex:  []byte{0x01, 0x00},
-		ReasonCod: []byte{0x00, 0x00, 0x00, 0x00},
-		TotMsgLen: []byte{0x00, 0x00, 0x00, 0x00}, //
-		ActMsgLen: []byte{0x00, 0x00, 0x00, 0x00}, //
+		SelIndex:  msg[76:78],
+		ReasonCod: MQRC_NONE,
+		TotMsgLen: make([]byte, 4),
+		ActMsgLen: make([]byte, 4),
 		MsgToken:  msgToken,
 		Status:    []byte{0x01, 0x00},
 		ResolQNLn: []byte{queueNameLen},
@@ -159,7 +159,7 @@ func handleRequestMsg(msg, userID, appType, appName, qMgr []byte) (response []by
 	rulesFormattingHeader := rulesFormattingHeader{
 		StructID:    []byte{0x52, 0x46, 0x48, 0x20},
 		Version:     []byte{0x00, 0x00, 0x00, 0x02},
-		Length:      []byte{0x00, 0x00, 0x01, 0x10}, //fix
+		Length:      make([]byte, 4),
 		Encoding:    []byte{0x00, 0x00, 0x01, 0x11},
 		CCSID:       []byte{0x00, 0x00, 0x04, 0xb8},
 		Format:      []byte{0x4d, 0x51, 0x53, 0x54, 0x52, 0x20, 0x20, 0x20},

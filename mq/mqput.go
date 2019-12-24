@@ -60,7 +60,7 @@ type mqput struct {
 func handleMqPut(msg, userID, appType, appName, qMgr []byte) (response []byte) {
 	queue := getQueueName(msg)
 
-	log.Printf("[INFO] received MQPUT message - C.: %x, R.: %x, Q.: %s\n", msg[8:12], msg[12:16], queue)
+	log.Printf("[INFO] M: MQPUT, C: %d, R: %d, Q: %s\n", binary.BigEndian.Uint32(msg[8:12]), binary.BigEndian.Uint32(msg[12:16]), queue)
 
 	msgID, _ := hex.DecodeString("414d5120514d312020202020202020206445ea5d04b59424") //сделать вручную
 	messageDescriptor := messageDescriptor{

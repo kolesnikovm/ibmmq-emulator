@@ -8,6 +8,7 @@ import (
 	"net"
 	"reflect"
 	"time"
+	"log"
 
 	"./mq"
 )
@@ -42,10 +43,10 @@ func getBytes(msgPart interface{}) (bytes []byte) {
 }
 
 func handleConn(conn net.Conn) {
-	fmt.Println("Handling new connection...")
+	log.Println("[INFO] ===== Handling new connection =====")
 
 	defer func() {
-		fmt.Println("Closing connection...")
+		log.Println("[INFO] ===== Closing connection =====")
 		conn.Close()
 	}()
 

@@ -2,6 +2,7 @@ package mq
 
 import (
 	"encoding/hex"
+	"encoding/binary"
 	"log"
 )
 
@@ -39,7 +40,7 @@ type fopa struct {
 }
 
 func handleMqOpen(msg []byte) (response []byte) {
-	log.Printf("[INFO] received MQOPEN message\n")
+	log.Printf("[INFO] M: MQOPEN, C: %d, R: %d\n", binary.BigEndian.Uint32(msg[8:12]), binary.BigEndian.Uint32(msg[12:16]))
 
 	objectDescriptor := objectDescriptor{
 		StructID:       msg[52:56],

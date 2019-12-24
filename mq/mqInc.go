@@ -25,16 +25,16 @@ type integerValue struct {
 }
 
 func handleMqInc(msg []byte) (response []byte) {
-	log.Printf("[INFO] received MQINC message\n")
+	log.Printf("[INFO] M: MQINC, C: %d, R: %d, Hdl: %d\n", binary.BigEndian.Uint32(msg[8:12]), binary.BigEndian.Uint32(msg[12:16]), binary.LittleEndian.Uint32(msg[48:52]))
 
-	selectorCount := int(binary.LittleEndian.Uint32(msg[:4]))
-	integerCount := int(binary.LittleEndian.Uint32(msg[4:8]))
-	characterCount := int(binary.LittleEndian.Uint32(msg[8:12])) / 48
+	selectorCount := int(binary.LittleEndian.Uint32(msg[52:56]))
+	integerCount := int(binary.LittleEndian.Uint32(msg[56:60]))
+	characterCount := int(binary.LittleEndian.Uint32(msg[60:64])) / 48
 
 	selectors := make([]selector, selectorCount)
 	for i := 0; i < selectorCount; i++ {
 		selectors[i] = selector{
-			value: msg[12+i*4 : 16+i*4],
+			value: msg[64+i*4 : 68+i*4],
 		}
 	}
 
@@ -51,9 +51,9 @@ func handleMqInc(msg []byte) (response []byte) {
 	}
 
 	mqInc := mqInc{
-		SelectorCount:   msg[0:4],
-		IntegerCount:    msg[4:8],
-		CharacterLength: msg[8:12],
+		SelectorCount:   msg[52:56],
+		IntegerCount:    msg[56:60],
+		CharacterLength: msg[60:64],
 		Selectors:       selectors,
 		IntegerValues:   integerValues,
 		CharValues:      characterValues,

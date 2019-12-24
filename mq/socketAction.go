@@ -1,6 +1,9 @@
 package mq
 
-import "log"
+import (
+	"encoding/binary"
+	"log"
+)
 
 type socketAction struct {
 	ConversID []byte
@@ -11,7 +14,7 @@ type socketAction struct {
 }
 
 func handleSocketAction(msg []byte) (response []byte) {
-	log.Printf("[INFO] received SOCKET_ACTION message - C.: %x, R.: %x, P1: %x, P2: %x\n", msg[28:32], msg[32:36], msg[40:44], msg[44:48])
+	log.Printf("[INFO] M: SOCKET_ACTION, C: %d, R: %d, P1: %d, P2: %d\n", binary.LittleEndian.Uint32(msg[28:32]), binary.LittleEndian.Uint32(msg[32:36]), binary.LittleEndian.Uint32(msg[40:44]), binary.LittleEndian.Uint32(msg[44:48]))
 
 	tshm := tshm{
 		StructID:  []byte(TSHM),

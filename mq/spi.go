@@ -3,6 +3,7 @@ package mq
 import (
 	"bytes"
 	"encoding/hex"
+	"encoding/binary"
 	"log"
 )
 
@@ -61,7 +62,7 @@ func handleSpi(msg []byte) (response []byte) {
 
 	switch {
 	case bytes.Compare(spiVerb, QUERY) == 0:
-		log.Printf("[INFO] received SPI message - C.: %x, R.: %x, Verb: QUERY\n", msg[8:12], msg[12:16])
+		log.Printf("[INFO] M: SPI, C: %d, R: %d, V: QUERY\n", binary.BigEndian.Uint32(msg[8:12]), binary.BigEndian.Uint32(msg[12:16]))
 
 		spqu := spib{
 			SpiStructID: SPQU,
@@ -71,7 +72,7 @@ func handleSpi(msg []byte) (response []byte) {
 		response = append(response, getBytes(spqu)...)
 		response = append(response, spqo...)
 	case bytes.Compare(spiVerb, OPEN) == 0:
-		log.Printf("[INFO] received SPI message - C.: %x, R.: %x, Verb: OPEN, Object: %s\n", msg[8:12], msg[12:16], msg[188:236])
+		log.Printf("[INFO] M: SPI, C: %d, R: %d, V: OPEN, Obj: %s\n", binary.BigEndian.Uint32(msg[8:12]), binary.BigEndian.Uint32(msg[12:16]), msg[188:236])
 
 		spou := spib{
 			SpiStructID: SPOU,

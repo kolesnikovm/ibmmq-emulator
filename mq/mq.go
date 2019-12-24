@@ -75,13 +75,11 @@ var (
 
 	MQCC_OK   = []byte{0x00, 0x00, 0x00, 0x00}
 	MQRC_NONE = []byte{0x00, 0x00, 0x00, 0x00}
+	ZERO_HDL  = []byte{0x00, 0x00, 0x00, 0x00}
 )
 
 func HandleMessage(msg []byte) (response []byte) {
-	log.Println("[INFO] ===== Start handling new message =====")
-
 	tshType := msg[:4]
-	log.Printf("[INFO] TSH type: %s\n", tshType)
 
 	var msgType byte
 	var tshmRs tshm
@@ -114,7 +112,7 @@ func HandleMessage(msg []byte) (response []byte) {
 
 	switch msgType {
 	case INITIAL_DATA:
-		response = append(response, handleInitialData(msg, tshType)...)
+		response = handleInitialData(msg, tshType)
 	case USER_DATA:
 		userID = msg[40:52]
 	case MQCONN:
@@ -128,7 +126,7 @@ func HandleMessage(msg []byte) (response []byte) {
 			ReplyLen:   []byte{0x00, 0x00, 0x01, 0x78},
 			ComplCode:  MQCC_OK,
 			ReasonCode: MQRC_NONE,
-			ObjectHdl:  []byte{0x00, 0x00, 0x00, 0x00},
+			ObjectHdl:  ZERO_HDL,
 		}
 
 		mqConn := handleMqConn(msg)
@@ -152,7 +150,7 @@ func HandleMessage(msg []byte) (response []byte) {
 		response = append(response, getBytes(apiHeader)...)	
 		response = append(response, mqOpen...)
 	case MQINQ:
-		mqInc := handleMqInc(msg[52:])
+		mqInc := handleMqInc(msg)
 
 		segmLen := 36 + 16 + len(mqInc)
 		segmLenBytes := getByteLength(segmLen)
@@ -180,9 +178,7 @@ func HandleMessage(msg []byte) (response []byte) {
 			return nil
 		}
 		
-		socketAction := handleSocketAction(msg)
-		
-		response = append(response, socketAction...)
+		response = handleSocketAction(msg)
 	case SPI:
 		spi := handleSpi(msg)
 
@@ -192,7 +188,7 @@ func HandleMessage(msg []byte) (response []byte) {
 
 		tshmRs.MQSegmLen = segmLenBytes
 
-		objectHdl := []byte{0x00, 0x00, 0x00, 0x00}
+		objectHdl := ZERO_HDL
 		if bytes.Compare(msg[52:56], []byte{0x0c, 0x00, 0x00, 0x00}) == 0 {
 			lpiVersion := msg[96:100]
 			switch {
@@ -233,7 +229,7 @@ func HandleMessage(msg []byte) (response []byte) {
 		response = append(response, getBytes(apiHeader)...)
 		response = append(response, mqPut...)
 	case REQUEST_MSGS:
-		asyncMsg := handleRequestMsg(msg[36:], userID, appType, appName, qMgr)
+		asyncMsg := handleRequestMsg(msg, userID, appType, appName, qMgr)
 
 		segmLen := 36 + len(asyncMsg)
 		segmLenBytes := getByteLength(segmLen)
@@ -247,23 +243,27 @@ func HandleMessage(msg []byte) (response []byte) {
 		response = append(response, getBytes(tshmRs)...)
 		response = append(response, asyncMsg...)
 	case MQCMIT:
+		log.Printf("[INFO] M: MQCMIT, C: %d, R: %d\n", binary.BigEndian.Uint32(msg[8:12]), binary.BigEndian.Uint32(msg[12:16]))
+
 		tshmRs.MQSegmLen = []byte{0x00, 0x00, 0x00, 0x34}
 		apiHeader := apiHeader{
 			ReplyLen:   []byte{0x00, 0x00, 0x00, 0x2c},
 			ComplCode:  MQCC_OK,
 			ReasonCode: MQRC_NONE,
-			ObjectHdl:  []byte{0x00, 0x00, 0x00, 0x00},
+			ObjectHdl:  ZERO_HDL,
 		}
-
+		
 		response = append(response, getBytes(tshmRs)...)
 		response = append(response, getBytes(apiHeader)...)
 	case MQDISC:
+		log.Printf("[INFO] M: MQDISC, C: %d, R: %d\n", binary.BigEndian.Uint32(msg[8:12]), binary.BigEndian.Uint32(msg[12:16]))
+
 		tshmRs.MQSegmLen = []byte{0x00, 0x00, 0x00, 0x34}
 		apiHeader := apiHeader{
 			ReplyLen:   []byte{0x00, 0x00, 0x00, 0x2c},
 			ComplCode:  MQCC_OK,
 			ReasonCode: MQRC_NONE,
-			ObjectHdl:  []byte{0x00, 0x00, 0x00, 0x00},
+			ObjectHdl:  ZERO_HDL,
 		}
 
 		response = append(response, getBytes(tshmRs)...)

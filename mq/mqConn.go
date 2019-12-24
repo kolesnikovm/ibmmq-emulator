@@ -1,6 +1,10 @@
 package mq
 
-import "log"
+import (
+	"encoding/binary"
+	"log"
+	"strings"
+)
 
 type mqConn struct {
 	QMgr        []byte `offset:"0", length:"48"`
@@ -13,7 +17,7 @@ type mqConn struct {
 }
 
 func handleMqConn(msg []byte) (response []byte) {
-	log.Printf("[INFO] received MQCONN message\n")
+	log.Printf("[INFO] M: MQCONN, C: %d, R: %d, A: %s, Q: %s\n", binary.BigEndian.Uint32(msg[8:12]), binary.BigEndian.Uint32(msg[12:16]), strings.TrimSpace(string(msg[100:128])), strings.TrimSpace(string(msg[52:100])))
 
 	mqConn := mqConn{
 		QMgr:        msg[52:100],
