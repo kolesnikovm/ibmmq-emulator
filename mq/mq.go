@@ -6,35 +6,57 @@ import (
 	"encoding/hex"
 	"log"
 	"reflect"
+	"strings"
+	"sync"
 )
 
-type tsh struct {
-	StructID     string
-	MQSegmLen    int
-	SegmType     byte
-	HeaderLength int
-}
-
 type tshm struct {
-	StructID  []byte `offset:"0", length:"4"`
-	MQSegmLen []byte `offset:"4", length:"4"`
-	ConversID []byte `offset:"8", length:"4"`
-	RequestID []byte `offset:"12", length:"4"`
-	ByteOrder []byte `offset:"16", length:"1"`
-	SegmType  []byte `offset:"17", length:"1"`
-	CtlFlag1  []byte `offset:"18", length:"1"`
-	CtlFlag2  []byte `offset:"19", length:"1"`
-	LUWIdent  []byte `offset:"20", length:"8"`
-	Encoding  []byte `offset:"28", length:"4"`
-	CCSID     []byte `offset:"32", length:"2"`
-	Reserved  []byte `offset:"34", length:"2"`
+	StructID  []byte `length:"4"`
+	MQSegmLen []byte `length:"4"`
+	ConversID []byte `length:"4"`
+	RequestID []byte `length:"4"`
+	ByteOrder []byte `length:"1"`
+	SegmType  []byte `length:"1"`
+	CtlFlag1  []byte `length:"1"`
+	CtlFlag2  []byte `length:"1"`
+	LUWIdent  []byte `length:"8"`
+	Encoding  []byte `length:"4"`
+	CCSID     []byte `length:"2"`
+	Reserved  []byte `length:"2"`
 }
 
 type apiHeader struct {
-	ReplyLen   []byte `offset:"0", length:"4"`
-	ComplCode  []byte `offset:"4", length:"4"`
-	ReasonCode []byte `offset:"8", length:"4"`
-	ObjectHdl  []byte `offset:"12", length:"4"`
+	ReplyLen   []byte `length:"4"`
+	ComplCode  []byte `length:"4"`
+	ReasonCode []byte `length:"4"`
+	ObjectHdl  []byte `length:"4"`
+}
+
+type context struct {
+	userID   []byte
+	sessions map[uint32]*session
+	mux      sync.RWMutex
+}
+
+type session struct {
+	qMgr    []byte
+	appName []byte
+	lastHdl uint32
+	hdls    map[uint32]*queue
+}
+
+type hdl struct {
+	producer int
+	consumer int
+}
+
+type queue struct {
+	name     []byte
+	role     []byte //producer/consumer
+	messages []message
+}
+
+type message struct {
 }
 
 const (
@@ -76,6 +98,10 @@ var (
 	MQCC_OK   = []byte{0x00, 0x00, 0x00, 0x00}
 	MQRC_NONE = []byte{0x00, 0x00, 0x00, 0x00}
 	ZERO_HDL  = []byte{0x00, 0x00, 0x00, 0x00}
+
+	ctx = context{
+		sessions: make(map[uint32]*session),
+	}
 )
 
 func HandleMessage(msg []byte) (response []byte) {
@@ -122,6 +148,16 @@ func HandleMessage(msg []byte) (response []byte) {
 		appName = msg[100:128]
 		qMgr = msg[52:100]
 
+		cid := binary.BigEndian.Uint32(msg[8:12])
+		log.Printf("[INFO] created new session with patameters: C: %d\n", cid)
+		ctx.mux.Lock()
+		ctx.sessions[cid] = &session{
+			qMgr:    qMgr,
+			appName: appName,
+			hdls:    make(map[uint32]*queue),
+		}
+		ctx.mux.Unlock()
+
 		apiHeader := apiHeader{
 			ReplyLen:   []byte{0x00, 0x00, 0x01, 0x78},
 			ComplCode:  MQCC_OK,
@@ -147,14 +183,14 @@ func HandleMessage(msg []byte) (response []byte) {
 		mqOpen := handleMqOpen(msg)
 
 		response = append(response, getBytes(tshmRs)...)
-		response = append(response, getBytes(apiHeader)...)	
+		response = append(response, getBytes(apiHeader)...)
 		response = append(response, mqOpen...)
 	case MQINQ:
 		mqInc := handleMqInc(msg)
 
 		segmLen := 36 + 16 + len(mqInc)
 		segmLenBytes := getByteLength(segmLen)
-		replyLenBytes := getByteLength(segmLen-8)
+		replyLenBytes := getByteLength(segmLen - 8)
 
 		tshmRs.MQSegmLen = segmLenBytes
 		apiHeader := apiHeader{
@@ -170,40 +206,36 @@ func HandleMessage(msg []byte) (response []byte) {
 		tshmRs.MQSegmLen = []byte{0x00, 0x00, 0x00, 0x34}
 
 		mqClose := handleMqClose(msg)
-		
+
 		response = append(response, getBytes(tshmRs)...)
 		response = append(response, mqClose...)
 	case SOCKET_ACTION:
 		if bytes.Compare(msg[36:40], []byte{0x02, 0x00, 0x00, 0x00}) == 0 {
 			return nil
 		}
-		
+
 		response = handleSocketAction(msg)
 	case SPI:
 		spi := handleSpi(msg)
 
 		segmLen := 36 + 16 + len(spi)
 		segmLenBytes := getByteLength(segmLen)
-		replyLenBytes := getByteLength(segmLen-8)
+		replyLenBytes := getByteLength(segmLen - 8)
 
 		tshmRs.MQSegmLen = segmLenBytes
 
 		objectHdl := ZERO_HDL
-		if bytes.Compare(msg[52:56], []byte{0x0c, 0x00, 0x00, 0x00}) == 0 {
-			lpiVersion := msg[96:100]
-			switch {
-			case bytes.Compare(lpiVersion, []byte{0x10, 0x20, 0x00, 0x00}) == 0:
-				objectHdl = []byte{0x02, 0x00, 0x00, 0x00}
-			case bytes.Compare(lpiVersion, []byte{0x29, 0x20, 0x00, 0x00}) == 0:
-				objectHdl = []byte{0x04, 0x00, 0x00, 0x00}
-			}
+
+		spiVerb := msg[52:56]
+		if bytes.Compare(spiVerb, OPEN) == 0 {
+			objectHdl = getHandler(msg)
 		}
 
 		apiHeader := apiHeader{
 			ReplyLen:   replyLenBytes,
 			ComplCode:  MQCC_OK,
 			ReasonCode: MQRC_NONE,
-			ObjectHdl:  objectHdl, //на каждое открытие свой номер
+			ObjectHdl:  objectHdl,
 		}
 
 		response = append(response, getBytes(tshmRs)...)
@@ -214,7 +246,7 @@ func HandleMessage(msg []byte) (response []byte) {
 
 		segmLen := 36 + 16 + len(mqPut)
 		segmLenBytes := getByteLength(segmLen)
-		replyLenBytes := getByteLength(segmLen-8)
+		replyLenBytes := getByteLength(segmLen - 8)
 
 		tshmRs.MQSegmLen = segmLenBytes
 
@@ -252,7 +284,7 @@ func HandleMessage(msg []byte) (response []byte) {
 			ReasonCode: MQRC_NONE,
 			ObjectHdl:  ZERO_HDL,
 		}
-		
+
 		response = append(response, getBytes(tshmRs)...)
 		response = append(response, getBytes(apiHeader)...)
 	case MQDISC:
@@ -297,4 +329,39 @@ func getByteLength(length int) []byte {
 	binary.BigEndian.PutUint32(byteLen, uint32(length))
 
 	return byteLen
+}
+
+func getHandler(msg []byte) []byte {
+	objectHdl := make([]byte, 4)
+
+	spiVerb := msg[52:56]
+	if bytes.Compare(spiVerb, OPEN) == 0 {
+		cid := binary.BigEndian.Uint32(msg[8:12])
+		log.Printf("[INFO] serving handler for session with id %d\n", cid)
+		role := msg[96:100]
+		name := msg[188:236]
+
+		ctx.mux.RLock()
+		session := ctx.sessions[cid]
+		ctx.mux.RUnlock()
+
+		for hdl, q := range session.hdls {
+			if bytes.Equal(q.name, name) && bytes.Equal(q.role, role) {
+				binary.BigEndian.PutUint32(objectHdl, hdl)
+				log.Printf("[INFO] return existing handler %d for %s - %x\n", hdl, strings.TrimSpace(string(q.name)), q.role)
+				return objectHdl
+			}
+		}
+
+		session.lastHdl += 2
+		session.hdls[session.lastHdl] = &queue{
+			name: name,
+			role: role,
+		}
+
+		log.Printf("[INFO] return new handler %d for %s - %x\n", session.lastHdl, strings.TrimSpace(string(name)), role)
+		binary.LittleEndian.PutUint32(objectHdl, session.lastHdl)
+	}
+
+	return objectHdl
 }

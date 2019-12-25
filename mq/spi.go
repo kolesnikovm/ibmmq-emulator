@@ -8,15 +8,15 @@ import (
 )
 
 type spi struct {
-	SpiVerb      []byte `offset:"0", length:"4"`
-	Version      []byte `offset:"4", length:"4"`
-	MaxReplySize []byte `offset:"8", length:"4"`
+	SpiVerb      []byte `length:"4"`
+	Version      []byte `length:"4"`
+	MaxReplySize []byte `length:"4"`
 }
 
 type spib struct {
-	SpiStructID []byte `offset:"0", length:"4"`
-	Version     []byte `offset:"4", length:"4"`
-	Length      []byte `offset:"8", length:"4"`
+	SpiStructID []byte `length:"4"`
+	Version     []byte `length:"4"`
+	Length      []byte `length:"4"`
 }
 
 type lpoo struct {
