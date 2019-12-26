@@ -75,7 +75,7 @@ type data struct {
 	Value []byte
 }
 
-func handleRequestMsg(msg, userID, appType, appName, qMgr []byte) (response []byte) {
+func handleRequestMsg(msg []byte) (response []byte) {
 	cid := binary.BigEndian.Uint32(msg[8:12])
 	rid := binary.BigEndian.Uint32(msg[12:16])
 
@@ -139,12 +139,12 @@ func handleRequestMsg(msg, userID, appType, appName, qMgr []byte) (response []by
 		CorrelID:   correlID,
 		BackoCnt:   []byte{0x00, 0x00, 0x00, 0x00},
 		ReplyToQ:   replyQ,
-		ReplToQMgr: qMgr,
-		UserID:     userID,
+		ReplToQMgr: ctx.sessions[cid].qMgr,
+		UserID:     ctx.userID,
 		AccntTok:   accntToken,
 		AppIDDAta:  appIDDAta,
-		PutAppTyp:  appType,
-		PutAppName: appName,
+		PutAppTyp:  ctx.sessions[cid].appType,
+		PutAppName: ctx.sessions[cid].appName,
 		PutDatGMT:  []byte{0x32, 0x30, 0x31, 0x39, 0x31, 0x32, 0x30, 0x36},
 		PutTimGMT:  []byte{0x31, 0x32, 0x34, 0x34, 0x31, 0x33, 0x35, 0x37},
 		AppOriDat:  []byte{0x20, 0x20, 0x20, 0x20},

@@ -41,6 +41,7 @@ type context struct {
 
 type session struct {
 	qMgr    []byte
+	appType []byte
 	appName []byte
 	lastHdl uint32
 	hdls    map[uint32]*queue
@@ -107,8 +108,6 @@ var (
 		MQDISC:       MQDISC_REPLY,
 	}
 
-	userID, appType, appName, qMgr []byte //перенести в контекст
-
 	MQCC_OK   = []byte{0x00, 0x00, 0x00, 0x00}
 	MQRC_NONE = []byte{0x00, 0x00, 0x00, 0x00}
 	ZERO_HDL  = []byte{0x00, 0x00, 0x00, 0x00}
@@ -156,20 +155,17 @@ func HandleMessage(msg []byte) (response []byte) {
 	case INITIAL_DATA:
 		response = handleInitialData(msg, tshType)
 	case USER_DATA:
-		userID = msg[40:52]
+		ctx.userID = msg[40:52]
 	case MQCONN:
 		tshmRs.MQSegmLen = []byte{0x00, 0x00, 0x01, 0x80}
-
-		appType = msg[128:132]
-		appName = msg[100:128]
-		qMgr = msg[52:100]
 
 		cid := binary.BigEndian.Uint32(msg[8:12])
 		log.Printf("[INFO] created new session with patameters: C: %d\n", cid)
 		ctx.mux.Lock()
 		ctx.sessions[cid] = &session{
-			qMgr:    qMgr,
-			appName: appName,
+			qMgr:    msg[52:100],
+			appType: msg[128:132],
+			appName: msg[100:128],
 			hdls:    make(map[uint32]*queue),
 		}
 		ctx.mux.Unlock()
@@ -258,7 +254,7 @@ func HandleMessage(msg []byte) (response []byte) {
 		response = append(response, getBytes(apiHeader)...)
 		response = append(response, spi...)
 	case MQPUT:
-		mqPut := handleMqPut(msg, userID, appType, appName, qMgr)
+		mqPut := handleMqPut(msg)
 
 		segmLen := 36 + 16 + len(mqPut)
 		segmLenBytes := getByteLength(segmLen)
@@ -277,7 +273,7 @@ func HandleMessage(msg []byte) (response []byte) {
 		response = append(response, getBytes(apiHeader)...)
 		response = append(response, mqPut...)
 	case REQUEST_MSGS:
-		asyncMsg := handleRequestMsg(msg, userID, appType, appName, qMgr)
+		asyncMsg := handleRequestMsg(msg)
 
 		segmLen := 36 + len(asyncMsg)
 		segmLenBytes := getByteLength(segmLen)
@@ -374,8 +370,8 @@ func getHandler(msg []byte) []byte {
 
 		session.lastHdl += 2
 		session.hdls[session.lastHdl] = &queue{
-			name: name,
-			role: role,
+			name:     name,
+			role:     role,
 			messages: list.New(),
 		}
 

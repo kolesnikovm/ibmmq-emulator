@@ -58,7 +58,7 @@ type mqput struct {
 	DataLength []byte
 }
 
-func handleMqPut(msg, userID, appType, appName, qMgr []byte) (response []byte) {
+func handleMqPut(msg []byte) (response []byte) {
 	cid := binary.BigEndian.Uint32(msg[8:12])
 	rid := binary.BigEndian.Uint32(msg[12:16])
 	hdl := binary.LittleEndian.Uint32(msg[48:52])
@@ -84,11 +84,11 @@ func handleMqPut(msg, userID, appType, appName, qMgr []byte) (response []byte) {
 		BackoCnt:   msg[148:152],
 		ReplyToQ:   msg[152:200],
 		ReplToQMgr: msg[200:248],
-		UserID:     userID,
+		UserID:     ctx.userID,
 		AccntTok:   msg[260:292],
 		AppIDDAta:  msg[292:324],
-		PutAppTyp:  appType,
-		PutAppName: appName,
+		PutAppTyp:  ctx.sessions[cid].appType,
+		PutAppName: ctx.sessions[cid].appName,
 		PutDatGMT:  []byte{0x32, 0x30, 0x31, 0x39, 0x31, 0x32, 0x30, 0x36}, //сделать норм
 		PutTimGMT:  []byte{0x31, 0x32, 0x34, 0x34, 0x31, 0x33, 0x35, 0x37},
 		AppOriDat:  []byte{0x20, 0x20, 0x20, 0x20},
@@ -111,7 +111,7 @@ func handleMqPut(msg, userID, appType, appName, qMgr []byte) (response []byte) {
 		UkDstCnt:   []byte{0x00, 0x00, 0x00, 0x00},
 		InDstCnt:   []byte{0x00, 0x00, 0x00, 0x00},
 		ResQName:   resQName,
-		ResQMgr:    qMgr,
+		ResQMgr:    ctx.sessions[cid].qMgr,
 		NumRecs:    msg[504:508],
 		PMRFlag:    msg[508:512],
 		OffsetPMR:  msg[512:516],
