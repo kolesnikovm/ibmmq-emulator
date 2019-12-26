@@ -3,7 +3,6 @@ package mq
 import (
 	"encoding/binary"
 	"encoding/hex"
-	"fmt"
 	"log"
 	"regexp"
 )
@@ -131,7 +130,7 @@ func handleMqPut(msg []byte) (response []byte) {
 		jmsValue: jmsValue,
 		usrValue: usrValue,
 	}
-	q := ctx.sessions[cid].hdls[hdl]
+	q := ctx.sessions[cid].hdls[hdl].queue
 	q.put(message)
 
 	return response
@@ -153,7 +152,6 @@ func getMsgInfo(msg []byte) (jmsValue, usrValue []byte) {
 
 	jmsValue = msg[572+valueLen1+4 : 572+valueLen1+4+valueLen2]
 	usrValue = msg[572+valueLen1+4+valueLen2+4 : 572+valueLen1+4+valueLen2+4+valueLen3]
-	fmt.Printf("================ %s ============ %s\n", jmsValue, usrValue)
 
 	return jmsValue, usrValue
 }

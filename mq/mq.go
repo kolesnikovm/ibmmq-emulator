@@ -44,17 +44,16 @@ type session struct {
 	appType []byte
 	appName []byte
 	lastHdl uint32
-	hdls    map[uint32]*queue
+	hdls    map[uint32]*hdl
 }
 
 type hdl struct {
-	producer int
-	consumer int
+	role  []byte //producer/consumer
+	queue *queue
 }
 
 type queue struct {
 	name     []byte
-	role     []byte //producer/consumer
 	messages *list.List
 }
 
@@ -117,6 +116,8 @@ var (
 	ctx = context{
 		sessions: make(map[uint32]*session),
 	}
+
+	queues = make(map[string]*queue)
 )
 
 func HandleMessage(msg []byte) (response []byte) {
@@ -166,7 +167,7 @@ func HandleMessage(msg []byte) (response []byte) {
 			qMgr:    msg[52:100],
 			appType: msg[128:132],
 			appName: msg[100:128],
-			hdls:    make(map[uint32]*queue),
+			hdls:    make(map[uint32]*hdl),
 		}
 		ctx.mux.Unlock()
 
@@ -275,6 +276,11 @@ func HandleMessage(msg []byte) (response []byte) {
 	case REQUEST_MSGS:
 		asyncMsg := handleRequestMsg(msg)
 
+		cid := binary.BigEndian.Uint32(msg[8:12])
+		hdl := binary.LittleEndian.Uint32(msg[40:44])
+		h := ctx.sessions[cid].hdls[hdl]
+		log.Printf("[DEBUG] current queue %s length: %d\n", strings.TrimSpace(string(h.queue.name)), h.queue.messages.Len())
+
 		segmLen := 36 + len(asyncMsg)
 		segmLenBytes := getByteLength(segmLen)
 
@@ -360,19 +366,30 @@ func getHandler(msg []byte) []byte {
 		session := ctx.sessions[cid]
 		ctx.mux.RUnlock()
 
-		for hdl, q := range session.hdls {
-			if bytes.Equal(q.name, name) && bytes.Equal(q.role, role) {
+		for hdl, h := range session.hdls {
+			if bytes.Equal(h.queue.name, name) && bytes.Equal(h.role, role) {
 				binary.BigEndian.PutUint32(objectHdl, hdl)
-				log.Printf("[INFO] return existing handler %d for %s - %x\n", hdl, strings.TrimSpace(string(q.name)), q.role)
+				log.Printf("[INFO] return existing handler %d for %s - %x\n", hdl, strings.TrimSpace(string(h.queue.name)), h.role)
 				return objectHdl
 			}
 		}
 
+		q := queues[string(name)]
+		if q == nil {
+			q = &queue{
+				name:     name,
+				messages: list.New(),
+			}
+
+			queues[string(name)] = q
+
+			log.Printf("[DEBUG] create new queue %s\n", strings.TrimSpace(string(name)))
+		}
+
 		session.lastHdl += 2
-		session.hdls[session.lastHdl] = &queue{
-			name:     name,
-			role:     role,
-			messages: list.New(),
+		session.hdls[session.lastHdl] = &hdl{
+			role:  role,
+			queue: q,
 		}
 
 		log.Printf("[INFO] return new handler %d for %s - %x\n", session.lastHdl, strings.TrimSpace(string(name)), role)
