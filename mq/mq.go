@@ -113,6 +113,8 @@ var (
 	MQRC_NONE = []byte{0x00, 0x00, 0x00, 0x00}
 	ZERO_HDL  = []byte{0x00, 0x00, 0x00, 0x00}
 
+	REVERSED = []byte{0x22, 0x02, 0x00, 0x01}
+
 	ctx = context{
 		sessions: make(map[uint32]*session),
 	}
@@ -284,10 +286,13 @@ func HandleMessage(msg []byte) (response []byte) {
 		tshmRs.RequestID = []byte{0x00, 0x00, 0x00, 0x01}
 		tshmRs.SegmType = []byte{ASYNC_MESSAGE}
 		tshmRs.CtlFlag1 = []byte{0x30}
-		tshmRs.Encoding = []byte{0x22, 0x02, 0x00, 0x01}
+		tshmRs.Encoding = REVERSED
 
 		response = append(response, getBytes(tshmRs)...)
 		response = append(response, asyncMsg...)
+
+		notification := handleNotification(msg)
+		response = append(response, notification...)
 	case MQCMIT:
 		log.Printf("[INFO] M: MQCMIT, C: %d, R: %d\n", binary.BigEndian.Uint32(msg[8:12]), binary.BigEndian.Uint32(msg[12:16]))
 
