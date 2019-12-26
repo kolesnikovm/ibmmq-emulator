@@ -76,7 +76,10 @@ type data struct {
 }
 
 func handleRequestMsg(msg, userID, appType, appName, qMgr []byte) (response []byte) {
-	log.Printf("[INFO] M: REQUEST_MESSAGE, C: %d, R: %d\n", binary.BigEndian.Uint32(msg[8:12]), binary.BigEndian.Uint32(msg[12:16]))
+	cid := binary.BigEndian.Uint32(msg[8:12])
+	rid := binary.BigEndian.Uint32(msg[12:16])
+
+	log.Printf("[INFO] M: REQUEST_MESSAGE, C: %d, R: %d\n", cid, rid)
 
 	msgToken, _ := hex.DecodeString("6345ea5d410000005f00000000000000")
 

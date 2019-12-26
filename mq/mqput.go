@@ -3,6 +3,7 @@ package mq
 import (
 	"encoding/binary"
 	"encoding/hex"
+	"fmt"
 	"log"
 	"regexp"
 )
@@ -58,9 +59,12 @@ type mqput struct {
 }
 
 func handleMqPut(msg, userID, appType, appName, qMgr []byte) (response []byte) {
+	cid := binary.BigEndian.Uint32(msg[8:12])
+	rid := binary.BigEndian.Uint32(msg[12:16])
+	hdl := binary.LittleEndian.Uint32(msg[48:52])
 	queue := getQueueName(msg)
 
-	log.Printf("[INFO] M: MQPUT, C: %d, R: %d, Q: %s\n", binary.BigEndian.Uint32(msg[8:12]), binary.BigEndian.Uint32(msg[12:16]), queue)
+	log.Printf("[INFO] M: MQPUT, C: %d, R: %d, H: %d, Q: %s\n", cid, hdl, rid, queue)
 
 	msgID, _ := hex.DecodeString("414d5120514d312020202020202020206445ea5d04b59424") //сделать вручную
 	messageDescriptor := messageDescriptor{
@@ -122,6 +126,14 @@ func handleMqPut(msg, userID, appType, appName, qMgr []byte) (response []byte) {
 	}
 	response = append(response, getBytes(mqput)...)
 
+	jmsValue, usrValue := getMsgInfo(msg)
+	message := message{
+		jmsValue: jmsValue,
+		usrValue: usrValue,
+	}
+	q := ctx.sessions[cid].hdls[hdl]
+	q.put(message)
+
 	return response
 }
 
@@ -132,4 +144,16 @@ func getQueueName(msg []byte) string {
 	qRegEx := regexp.MustCompile(`///(.+?)<`)
 
 	return qRegEx.FindStringSubmatch(queueStr)[1]
+}
+
+func getMsgInfo(msg []byte) (jmsValue, usrValue []byte) {
+	valueLen1 := int(binary.BigEndian.Uint32(msg[568:572]))
+	valueLen2 := int(binary.BigEndian.Uint32(msg[572+valueLen1 : 572+valueLen1+4]))
+	valueLen3 := int(binary.BigEndian.Uint32(msg[572+valueLen1+4+valueLen2 : 572+valueLen1+4+valueLen2+4]))
+
+	jmsValue = msg[572+valueLen1+4 : 572+valueLen1+4+valueLen2]
+	usrValue = msg[572+valueLen1+4+valueLen2+4 : 572+valueLen1+4+valueLen2+4+valueLen3]
+	fmt.Printf("================ %s ============ %s\n", jmsValue, usrValue)
+
+	return jmsValue, usrValue
 }

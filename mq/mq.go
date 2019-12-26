@@ -2,6 +2,7 @@ package mq
 
 import (
 	"bytes"
+	"container/list"
 	"encoding/binary"
 	"encoding/hex"
 	"log"
@@ -53,10 +54,23 @@ type hdl struct {
 type queue struct {
 	name     []byte
 	role     []byte //producer/consumer
-	messages []message
+	messages *list.List
 }
 
 type message struct {
+	jmsValue []byte
+	usrValue []byte
+}
+
+func (q *queue) put(msg message) {
+	q.messages.PushBack(msg)
+}
+
+func (q *queue) get() message {
+	msg := q.messages.Front()
+	q.messages.Remove(msg)
+
+	return msg.Value.(message)
 }
 
 const (
@@ -357,6 +371,7 @@ func getHandler(msg []byte) []byte {
 		session.hdls[session.lastHdl] = &queue{
 			name: name,
 			role: role,
+			messages: list.New(),
 		}
 
 		log.Printf("[INFO] return new handler %d for %s - %x\n", session.lastHdl, strings.TrimSpace(string(name)), role)
