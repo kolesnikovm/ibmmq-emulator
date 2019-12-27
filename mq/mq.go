@@ -5,6 +5,7 @@ import (
 	"container/list"
 	"encoding/binary"
 	"encoding/hex"
+	"io/ioutil"
 	"log"
 	"reflect"
 	"strings"
@@ -118,7 +119,17 @@ var (
 	}
 
 	queues = make(map[string]*queue)
+
+	payload []byte
+	err     error
 )
+
+func init() {
+	payload, err = ioutil.ReadFile("response.json")
+	if err != nil {
+		log.Printf("[ERROR] error opening file %s", err)
+	}
+}
 
 func HandleMessage(msg []byte) (response []byte) {
 	tshType := msg[:4]

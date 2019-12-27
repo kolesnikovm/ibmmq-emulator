@@ -202,7 +202,6 @@ func handleRequestMsg(msg []byte) (response []byte) {
 	binary.BigEndian.PutUint32(rfhLength, uint32(len(getBytes(rulesFormattingHeader))))
 	rulesFormattingHeader.Length = rfhLength
 
-	payload := "lox bus alesha"
 	normPayload := append([]byte(payload), make([]byte, 4-len(payload)%4)...)
 
 	payloadLength := make([]byte, 4)
