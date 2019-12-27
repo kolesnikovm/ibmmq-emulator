@@ -5,6 +5,7 @@ import (
 	"encoding/hex"
 	"log"
 	"regexp"
+	"time"
 )
 
 type messageDescriptor struct {
@@ -65,6 +66,8 @@ func handleMqPut(msg []byte) (response []byte) {
 
 	log.Printf("[INFO] M: MQPUT, C: %d, R: %d, H: %d, Q: %s\n", cid, hdl, rid, queue)
 
+	t := time.Now()
+
 	msgID, _ := hex.DecodeString("414d5120514d312020202020202020206445ea5d04b59424") //сделать вручную
 	messageDescriptor := messageDescriptor{
 		StructID:   msg[52:56],
@@ -88,8 +91,8 @@ func handleMqPut(msg []byte) (response []byte) {
 		AppIDDAta:  msg[292:324],
 		PutAppTyp:  ctx.sessions[cid].appType,
 		PutAppName: ctx.sessions[cid].appName,
-		PutDatGMT:  []byte{0x32, 0x30, 0x31, 0x39, 0x31, 0x32, 0x30, 0x36}, //сделать норм
-		PutTimGMT:  []byte{0x31, 0x32, 0x34, 0x34, 0x31, 0x33, 0x35, 0x37},
+		PutDatGMT:  []byte(t.Format("20060102")),
+		PutTimGMT:  []byte(t.Format("15040500")),
 		AppOriDat:  []byte{0x20, 0x20, 0x20, 0x20},
 	}
 	response = append(response, getBytes(messageDescriptor)...)

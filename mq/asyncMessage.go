@@ -6,6 +6,7 @@ import (
 	"log"
 	"math/rand"
 	"strings"
+	"time"
 )
 
 type asyncMessage struct {
@@ -136,6 +137,8 @@ func handleRequestMsg(msg []byte) (response []byte) {
 
 	groupID := make([]byte, 24)
 
+	t := time.Now()
+
 	asyncMessageDescriptor := asyncMessageDescriptor{
 		StructID:   []byte{0x4d, 0x44, 0x20, 0x20},
 		Version:    []byte{0x02, 0x00, 0x00, 0x00},
@@ -158,8 +161,8 @@ func handleRequestMsg(msg []byte) (response []byte) {
 		AppIDDAta:  appIDDAta,
 		PutAppTyp:  ctx.sessions[cid].appType,
 		PutAppName: ctx.sessions[cid].appName,
-		PutDatGMT:  []byte{0x32, 0x30, 0x31, 0x39, 0x31, 0x32, 0x30, 0x36},
-		PutTimGMT:  []byte{0x31, 0x32, 0x34, 0x34, 0x31, 0x33, 0x35, 0x37},
+		PutDatGMT:  []byte(t.Format("20060102")),
+		PutTimGMT:  []byte(t.Format("15040500")),
 		AppOriDat:  []byte{0x20, 0x20, 0x20, 0x20},
 		GroupID:    groupID,
 		MsgSeqNum:  []byte{0x01, 0x00, 0x00, 0x00},
