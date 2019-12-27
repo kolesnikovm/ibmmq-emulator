@@ -5,6 +5,7 @@ import (
 	"encoding/hex"
 	"log"
 	"math/rand"
+	"strings"
 )
 
 type asyncMessage struct {
@@ -71,6 +72,11 @@ type rulesFormattingHeader struct {
 	UsrValue    []byte
 }
 
+type nameValue struct {
+	length []byte
+	value  []byte
+}
+
 type data struct {
 	Value []byte
 }
@@ -78,12 +84,19 @@ type data struct {
 func handleRequestMsg(msg []byte) (response []byte) {
 	cid := binary.BigEndian.Uint32(msg[8:12])
 	rid := binary.BigEndian.Uint32(msg[12:16])
+	hdl := binary.LittleEndian.Uint32(msg[40:44])
 
-	log.Printf("[INFO] M: REQUEST_MESSAGE, C: %d, R: %d\n", cid, rid)
+	log.Printf("[INFO] M: REQUEST_MESSAGE, C: %d, R: %d, H: %d\n", cid, rid, hdl)
 
 	msgToken, _ := hex.DecodeString("6345ea5d410000005f00000000000000")
 
-	queueName := []byte("DEV.QUEUE.1 ") //нужен ли в конце пробел
+	q := ctx.sessions[cid].hdls[hdl].queue
+	qN := strings.TrimSpace(string(q.name))
+	queueName := make([]byte, 0, len(qN)+len(qN)%2)
+	queueName = append(queueName, []byte(qN)...)
+	for i := len(queueName); i < cap(queueName); i++ {
+		queueName = append(queueName, []byte(" ")...)
+	}
 	queueNameLen := byte(len(queueName))
 
 	asyncMessage := asyncMessage{
@@ -156,8 +169,18 @@ func handleRequestMsg(msg []byte) (response []byte) {
 	}
 
 	mcdValue, _ := hex.DecodeString("000000203c6d63643e3c4d73643e6a6d735f746578743c2f4d73643e3c2f6d63643e2020")
-	jmcValue, _ := hex.DecodeString("000000503c6a6d733e3c4473743e71756575653a2f2f2f4445562e51554555452e313c2f4473743e3c546d733e313537353633363235333537343c2f546d733e3c446c763e323c2f446c763e3c2f6a6d733e2020")
-	usrValue, _ := hex.DecodeString("000000703c7573723e3c6573666c5f6d6574686f644e616d653e636c69656e744372656174653c2f6573666c5f6d6574686f644e616d653e3c7372635f73797374656d49443e4452544c3c2f7372635f73797374656d49443e3c76657273696f6e3e323c2f76657273696f6e3e3c2f7573723e20")
+
+	message := q.get()
+
+	jmsValue := nameValue{
+		length: getByteLength(len(message.jmsValue)),
+		value:  message.jmsValue,
+	}
+
+	usrValue := nameValue{
+		length: getByteLength(len(message.usrValue)),
+		value:  message.usrValue,
+	}
 
 	rulesFormattingHeader := rulesFormattingHeader{
 		StructID:    []byte{0x52, 0x46, 0x48, 0x20},
@@ -169,8 +192,8 @@ func handleRequestMsg(msg []byte) (response []byte) {
 		Flags:       []byte{0x00, 0x00, 0x00, 0x00},
 		NmeValCCSID: []byte{0x00, 0x00, 0x04, 0xb8},
 		McdValue:    mcdValue,
-		JmsValue:    jmcValue,
-		UsrValue:    usrValue,
+		JmsValue:    getBytes(jmsValue),
+		UsrValue:    getBytes(usrValue),
 	}
 	rfhLength := make([]byte, 4)
 	binary.BigEndian.PutUint32(rfhLength, uint32(len(getBytes(rulesFormattingHeader))))

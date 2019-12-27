@@ -274,24 +274,26 @@ func HandleMessage(msg []byte) (response []byte) {
 		response = append(response, getBytes(apiHeader)...)
 		response = append(response, mqPut...)
 	case REQUEST_MSGS:
-		asyncMsg := handleRequestMsg(msg)
-
 		cid := binary.BigEndian.Uint32(msg[8:12])
 		hdl := binary.LittleEndian.Uint32(msg[40:44])
-		h := ctx.sessions[cid].hdls[hdl]
-		log.Printf("[DEBUG] current queue %s length: %d\n", strings.TrimSpace(string(h.queue.name)), h.queue.messages.Len())
+		q := ctx.sessions[cid].hdls[hdl].queue
+		log.Printf("[DEBUG] current queue %s length: %d\n", strings.TrimSpace(string(q.name)), q.messages.Len())
 
-		segmLen := 36 + len(asyncMsg)
-		segmLenBytes := getByteLength(segmLen)
+		if q.messages.Len() > 0 {
+			asyncMsg := handleRequestMsg(msg)
 
-		tshmRs.MQSegmLen = segmLenBytes
-		tshmRs.RequestID = []byte{0x00, 0x00, 0x00, 0x01}
-		tshmRs.SegmType = []byte{ASYNC_MESSAGE}
-		tshmRs.CtlFlag1 = []byte{0x30}
-		tshmRs.Encoding = REVERSED
+			segmLen := 36 + len(asyncMsg)
+			segmLenBytes := getByteLength(segmLen)
 
-		response = append(response, getBytes(tshmRs)...)
-		response = append(response, asyncMsg...)
+			tshmRs.MQSegmLen = segmLenBytes
+			tshmRs.RequestID = []byte{0x00, 0x00, 0x00, 0x01}
+			tshmRs.SegmType = []byte{ASYNC_MESSAGE}
+			tshmRs.CtlFlag1 = []byte{0x30}
+			tshmRs.Encoding = REVERSED
+
+			response = append(response, getBytes(tshmRs)...)
+			response = append(response, asyncMsg...)
+		}
 
 		notification := handleNotification(msg)
 		response = append(response, notification...)
