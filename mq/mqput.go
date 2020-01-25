@@ -69,6 +69,12 @@ func handleMqPut(msg []byte) (response []byte) {
 	t := time.Now()
 
 	msgID, _ := hex.DecodeString("414d5120514d312020202020202020206445ea5d04b59424") //сделать вручную
+	ctx.mux.RLock()
+	appType := ctx.sessions[cid].appType
+	appName := ctx.sessions[cid].appName
+	qMgr := ctx.sessions[cid].qMgr
+	q := ctx.sessions[cid].hdls[hdl].queue
+	ctx.mux.RUnlock()
 	messageDescriptor := messageDescriptor{
 		StructID:   msg[52:56],
 		Version:    msg[56:60],
@@ -89,8 +95,8 @@ func handleMqPut(msg []byte) (response []byte) {
 		UserID:     ctx.userID,
 		AccntTok:   msg[260:292],
 		AppIDDAta:  msg[292:324],
-		PutAppTyp:  ctx.sessions[cid].appType,
-		PutAppName: ctx.sessions[cid].appName,
+		PutAppTyp:  appType,
+		PutAppName: appName,
 		PutDatGMT:  []byte(t.Format("20060102")),
 		PutTimGMT:  []byte(t.Format("15040500")),
 		AppOriDat:  []byte{0x20, 0x20, 0x20, 0x20},
@@ -113,7 +119,7 @@ func handleMqPut(msg []byte) (response []byte) {
 		UkDstCnt:   []byte{0x00, 0x00, 0x00, 0x00},
 		InDstCnt:   []byte{0x00, 0x00, 0x00, 0x00},
 		ResQName:   resQName,
-		ResQMgr:    ctx.sessions[cid].qMgr,
+		ResQMgr:    qMgr,
 		NumRecs:    msg[504:508],
 		PMRFlag:    msg[508:512],
 		OffsetPMR:  msg[512:516],
@@ -133,7 +139,7 @@ func handleMqPut(msg []byte) (response []byte) {
 		jmsValue: jmsValue,
 		usrValue: usrValue,
 	}
-	q := ctx.sessions[cid].hdls[hdl].queue
+
 	q.put(message)
 
 	return response

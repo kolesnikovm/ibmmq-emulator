@@ -91,7 +91,9 @@ func handleRequestMsg(msg []byte) (response []byte) {
 
 	msgToken, _ := hex.DecodeString("6345ea5d410000005f00000000000000")
 
+	ctx.mux.RLock()
 	q := ctx.sessions[cid].hdls[hdl].queue
+	ctx.mux.RUnlock()
 	qN := strings.TrimSpace(string(q.name))
 	queueName := make([]byte, 0, len(qN)+len(qN)%2)
 	queueName = append(queueName, []byte(qN)...)
@@ -139,6 +141,12 @@ func handleRequestMsg(msg []byte) (response []byte) {
 
 	t := time.Now()
 
+	ctx.mux.RLock()
+	qMgr := ctx.sessions[cid].qMgr
+	appType := ctx.sessions[cid].appType
+	appName := ctx.sessions[cid].appName
+	ctx.mux.RUnlock()
+
 	asyncMessageDescriptor := asyncMessageDescriptor{
 		StructID:   []byte{0x4d, 0x44, 0x20, 0x20},
 		Version:    []byte{0x02, 0x00, 0x00, 0x00},
@@ -155,12 +163,12 @@ func handleRequestMsg(msg []byte) (response []byte) {
 		CorrelID:   correlID,
 		BackoCnt:   []byte{0x00, 0x00, 0x00, 0x00},
 		ReplyToQ:   replyQ,
-		ReplToQMgr: ctx.sessions[cid].qMgr,
+		ReplToQMgr: qMgr,
 		UserID:     ctx.userID,
 		AccntTok:   accntToken,
 		AppIDDAta:  appIDDAta,
-		PutAppTyp:  ctx.sessions[cid].appType,
-		PutAppName: ctx.sessions[cid].appName,
+		PutAppTyp:  appType,
+		PutAppName: appName,
 		PutDatGMT:  []byte(t.Format("20060102")),
 		PutTimGMT:  []byte(t.Format("15040500")),
 		AppOriDat:  []byte{0x20, 0x20, 0x20, 0x20},
