@@ -172,13 +172,20 @@ func HandleMessage(msg []byte) (response []byte) {
 		tshmRs.MQSegmLen = []byte{0x00, 0x00, 0x01, 0x80}
 
 		cid := binary.BigEndian.Uint32(msg[8:12])
-		log.Printf("[INFO] created new session with patameters: C: %d\n", cid)
+
 		ctx.mux.Lock()
-		ctx.sessions[cid] = &session{
-			qMgr:    msg[52:100],
-			appType: msg[128:132],
-			appName: msg[100:128],
-			hdls:    make(map[uint32]*hdl),
+		_, ok := ctx.sessions[cid]
+		if !ok {
+			ctx.sessions[cid] = &session{
+				qMgr:    msg[52:100],
+				appType: msg[128:132],
+				appName: msg[100:128],
+				hdls:    make(map[uint32]*hdl),
+			}
+
+			log.Printf("[INFO] created new session with patameters: C: %d\n", cid)
+		} else {
+			log.Printf("[INFO] session already exists with patameters: C: %d\n", cid)
 		}
 		ctx.mux.Unlock()
 
@@ -238,6 +245,12 @@ func HandleMessage(msg []byte) (response []byte) {
 			return nil
 		}
 
+		cid := binary.BigEndian.Uint32(msg[28:32])
+		ctx.mux.Lock()
+		delete(ctx.sessions, cid)
+		ctx.mux.Unlock()
+		log.Printf("[INFO] detele session with id %d\n", cid)
+
 		response = handleSocketAction(msg)
 	case SPI:
 		spi := handleSpi(msg)
@@ -287,7 +300,11 @@ func HandleMessage(msg []byte) (response []byte) {
 	case REQUEST_MSGS:
 		cid := binary.BigEndian.Uint32(msg[8:12])
 		hdl := binary.LittleEndian.Uint32(msg[40:44])
+		log.Printf("[DEBUG] ============ cid %d hdl %d\n", cid, hdl)
+
+		ctx.mux.RLock()
 		q := ctx.sessions[cid].hdls[hdl].queue
+		ctx.mux.RUnlock()
 		log.Printf("[DEBUG] current queue %s length: %d\n", strings.TrimSpace(string(q.name)), q.messages.Len())
 
 		if q.messages.Len() > 0 {
@@ -368,46 +385,43 @@ func getByteLength(length int) []byte {
 func getHandler(msg []byte) []byte {
 	objectHdl := make([]byte, 4)
 
-	spiVerb := msg[52:56]
-	if bytes.Compare(spiVerb, OPEN) == 0 {
-		cid := binary.BigEndian.Uint32(msg[8:12])
-		log.Printf("[INFO] serving handler for session with id %d\n", cid)
-		role := msg[96:100]
-		name := msg[188:236]
+	cid := binary.BigEndian.Uint32(msg[8:12])
+	log.Printf("[INFO] serving handler for session with id %d\n", cid)
+	role := msg[96:100]
+	name := msg[188:236]
 
-		ctx.mux.RLock()
-		session := ctx.sessions[cid]
-		ctx.mux.RUnlock()
+	ctx.mux.RLock()
+	session := ctx.sessions[cid]
+	ctx.mux.RUnlock()
 
-		for hdl, h := range session.hdls {
-			if bytes.Equal(h.queue.name, name) && bytes.Equal(h.role, role) {
-				binary.BigEndian.PutUint32(objectHdl, hdl)
-				log.Printf("[INFO] return existing handler %d for %s - %x\n", hdl, strings.TrimSpace(string(h.queue.name)), h.role)
-				return objectHdl
-			}
+	for hdl, h := range session.hdls {
+		if bytes.Equal(h.queue.name, name) && bytes.Equal(h.role, role) {
+			binary.LittleEndian.PutUint32(objectHdl, hdl)
+			log.Printf("[INFO] return existing handler %d for %s - %x\n", hdl, strings.TrimSpace(string(h.queue.name)), h.role)
+			return objectHdl
 		}
-
-		q := queues[string(name)]
-		if q == nil {
-			q = &queue{
-				name:     name,
-				messages: list.New(),
-			}
-
-			queues[string(name)] = q
-
-			log.Printf("[DEBUG] create new queue %s\n", strings.TrimSpace(string(name)))
-		}
-
-		session.lastHdl += 2
-		session.hdls[session.lastHdl] = &hdl{
-			role:  role,
-			queue: q,
-		}
-
-		log.Printf("[INFO] return new handler %d for %s - %x\n", session.lastHdl, strings.TrimSpace(string(name)), role)
-		binary.LittleEndian.PutUint32(objectHdl, session.lastHdl)
 	}
+
+	q := queues[string(name)]
+	if q == nil {
+		q = &queue{
+			name:     name,
+			messages: list.New(),
+		}
+
+		queues[string(name)] = q
+
+		log.Printf("[DEBUG] create new queue %s\n", strings.TrimSpace(string(name)))
+	}
+
+	session.lastHdl += 2
+	session.hdls[session.lastHdl] = &hdl{
+		role:  role,
+		queue: q,
+	}
+
+	log.Printf("[INFO] return new handler %d for %s - %x\n", session.lastHdl, strings.TrimSpace(string(name)), role)
+	binary.LittleEndian.PutUint32(objectHdl, session.lastHdl)
 
 	return objectHdl
 }
